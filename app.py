@@ -397,53 +397,53 @@ else:
 ALIAS = {"T": "10", "0": "10", "1": "A"}
 
 
-def parsear_mano(texto):
-    """'72 453' -> Jugador [7,2], Banca [4,5,3].
-    Una letra/numero por carta. 10 = T o 0 (o escribir 10)."""
+def parsear_cartas(texto, lado):
+    """'453' -> ['4','5','3']. Una letra/numero por carta.
+    10 = T o 0 (o escribir 10). Acepta espacios o comas."""
     t = texto.upper().replace("10", "T")
-    grupos = [g for g in re.split(r"[\s/,\-\.]+", t.strip()) if g]
-    if len(grupos) != 2:
-        raise ValueError("Escribe dos grupos: Jugador y Banca. Ej.: 72 453")
-    salida = []
-    for g in grupos:
-        cartas = []
-        for ch in g:
-            ch = ALIAS.get(ch, ch)
-            if ch not in RANGOS:
-                raise ValueError(f"Carta inválida: {ch}")
-            cartas.append(ch)
-        if len(cartas) not in (2, 3):
-            raise ValueError("Cada lado debe tener 2 o 3 cartas.")
-        salida.append(cartas)
-    return salida
+    t = re.sub(r"[\s/,\-\.]+", "", t)
+    cartas = []
+    for ch in t:
+        ch = ALIAS.get(ch, ch)
+        if ch not in RANGOS:
+            raise ValueError(f"{lado}: carta inválida '{ch}'")
+        cartas.append(ch)
+    if len(cartas) not in (2, 3):
+        raise ValueError(f"{lado}: debe tener 2 o 3 cartas.")
+    return cartas
 
 
 st.markdown("---")
 st.subheader("⚡ Registro rápido (teclado)")
-st.caption("Escribe **Jugador Banca** y Enter. Ej.: `72 453` · 10 = `T` o `0` · "
-           "J, Q, K, A normal · `u` = deshacer última mano")
+st.caption("Jugador → **Tab** → Banca → **Enter**. Ej.: `72` y `453` · "
+           "10 = `T` o `0` · J, Q, K, A normal · escribe `u` en "
+           "Jugador para deshacer la última mano")
 
 with st.form("rapido", clear_on_submit=True):
-    entrada = st.text_input("Mano → Jugador Banca", placeholder="72 453")
+    fc1, fc2 = st.columns(2)
+    entrada_j = fc1.text_input("🔵 Jugador", placeholder="72")
+    entrada_b = fc2.text_input("🔴 Banca", placeholder="453")
     enviar = st.form_submit_button("Guardar (Enter)")
 
-if enviar and entrada.strip():
-    if entrada.strip().lower() in ("u", "z", "deshacer"):
+if enviar:
+    if entrada_j.strip().lower() in ("u", "z"):
         deshacer_ultima()
         st.session_state.aviso = "↩️ Última mano deshecha."
         st.rerun()
-    try:
-        j, b = parsear_mano(entrada)
-        error = validar_mano(j, b)
-        if error:
-            raise ValueError(error)
-        res, pj, pb = guardar_mano(j, b)
-        st.session_state.aviso = (
-            f"{EMOJI[res]} Ganó {NOMBRE[res]} ({pj} vs {pb}) · "
-            f"J: {' '.join(j)} | B: {' '.join(b)}")
-        st.rerun()
-    except ValueError as e:
-        st.error(str(e))
+    elif entrada_j.strip() or entrada_b.strip():
+        try:
+            j = parsear_cartas(entrada_j, "Jugador")
+            b = parsear_cartas(entrada_b, "Banca")
+            error = validar_mano(j, b)
+            if error:
+                raise ValueError(error)
+            res, pj, pb = guardar_mano(j, b)
+            st.session_state.aviso = (
+                f"{EMOJI[res]} Ganó {NOMBRE[res]} ({pj} vs {pb}) · "
+                f"J: {' '.join(j)} | B: {' '.join(b)}")
+            st.rerun()
+        except ValueError as e:
+            st.error(str(e))
 
 if st.session_state.aviso:
     st.info(st.session_state.aviso)
@@ -453,7 +453,7 @@ if st.session_state.aviso:
 components.html(
     """<script>
     const f = () => {
-      const i = window.parent.document.querySelector('input[aria-label^="Mano"]');
+      const i = window.parent.document.querySelector('input[aria-label^="🔵"]');
       if (i) i.focus();
     };
     setTimeout(f, 150); setTimeout(f, 600);
