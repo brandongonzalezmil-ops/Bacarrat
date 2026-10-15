@@ -1,9 +1,11 @@
+import re
 import sqlite3
 import uuid
 from datetime import datetime
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 # --------------------------------------------------
 # CONFIGURACION
@@ -389,59 +391,75 @@ else:
                "composición del zapato favorable y bien registrada.")
 
 # --------------------------------------------------
-# 2) REGISTRO RAPIDO
+# 2) REGISTRO RAPIDO POR TECLADO
 # --------------------------------------------------
 
+ALIAS = {"T": "10", "0": "10", "1": "A"}
+
+
+def parsear_mano(texto):
+    """'72 453' -> Jugador [7,2], Banca [4,5,3].
+    Una letra/numero por carta. 10 = T o 0 (o escribir 10)."""
+    t = texto.upper().replace("10", "T")
+    grupos = [g for g in re.split(r"[\s/,\-\.]+", t.strip()) if g]
+    if len(grupos) != 2:
+        raise ValueError("Escribe dos grupos: Jugador y Banca. Ej.: 72 453")
+    salida = []
+    for g in grupos:
+        cartas = []
+        for ch in g:
+            ch = ALIAS.get(ch, ch)
+            if ch not in RANGOS:
+                raise ValueError(f"Carta inválida: {ch}")
+            cartas.append(ch)
+        if len(cartas) not in (2, 3):
+            raise ValueError("Cada lado debe tener 2 o 3 cartas.")
+        salida.append(cartas)
+    return salida
+
+
 st.markdown("---")
-st.subheader("⚡ Registro rápido")
+st.subheader("⚡ Registro rápido (teclado)")
+st.caption("Escribe **Jugador Banca** y Enter. Ej.: `72 453` · 10 = `T` o `0` · "
+           "J, Q, K, A normal · `u` = deshacer última mano")
 
+with st.form("rapido", clear_on_submit=True):
+    entrada = st.text_input("Mano → Jugador Banca", placeholder="72 453")
+    enviar = st.form_submit_button("Guardar (Enter)")
 
-def fila_botones(lado, clave, emoji):
-    st.write(f"{emoji} **{lado}**")
-    cols = st.columns(len(RANGOS))
-    for i, r in enumerate(RANGOS):
-        if cols[i].button(r, key=f"{clave}_{r}", use_container_width=True):
-            if len(st.session_state[clave]) < 3:
-                st.session_state[clave].append(r)
-            else:
-                st.session_state.aviso = f"{lado} ya tiene 3 cartas."
-
-
-fila_botones("Jugador", "cj", "🔵")
-fila_botones("Banca", "cb", "🔴")
-
-cj, cb = st.session_state.cj, st.session_state.cb
-st.write(
-    f"🔵 Jugador: **{' '.join(cj) or '—'}**"
-    f"{' = ' + str(puntos(cj)) if cj else ''}   |   "
-    f"🔴 Banca: **{' '.join(cb) or '—'}**"
-    f"{' = ' + str(puntos(cb)) if cb else ''}"
-)
+if enviar and entrada.strip():
+    if entrada.strip().lower() in ("u", "z", "deshacer"):
+        deshacer_ultima()
+        st.session_state.aviso = "↩️ Última mano deshecha."
+        st.rerun()
+    try:
+        j, b = parsear_mano(entrada)
+        error = validar_mano(j, b)
+        if error:
+            raise ValueError(error)
+        res, pj, pb = guardar_mano(j, b)
+        st.session_state.aviso = (
+            f"{EMOJI[res]} Ganó {NOMBRE[res]} ({pj} vs {pb}) · "
+            f"J: {' '.join(j)} | B: {' '.join(b)}")
+        st.rerun()
+    except ValueError as e:
+        st.error(str(e))
 
 if st.session_state.aviso:
-    st.warning(st.session_state.aviso)
+    st.info(st.session_state.aviso)
     st.session_state.aviso = None
 
-b1, b2, b3 = st.columns(3)
-
-if b1.button("💾 Guardar mano", type="primary", use_container_width=True):
-    error = validar_mano(cj, cb)
-    if error:
-        st.error(error)
-    else:
-        res, pj, pb = guardar_mano(cj, cb)
-        st.session_state.cj, st.session_state.cb = [], []
-        st.session_state.aviso = (
-            f"{EMOJI[res]} Ganó {NOMBRE[res]} ({pj} vs {pb})")
-        st.rerun()
-
-if b2.button("🧹 Limpiar selección", use_container_width=True):
-    st.session_state.cj, st.session_state.cb = [], []
-    st.rerun()
-
-if b3.button("↩️ Deshacer última mano", use_container_width=True):
-    deshacer_ultima()
-    st.rerun()
+# Devuelve el cursor a la caja después de cada mano (mejor esfuerzo)
+components.html(
+    """<script>
+    const f = () => {
+      const i = window.parent.document.querySelector('input[aria-label^="Mano"]');
+      if (i) i.focus();
+    };
+    setTimeout(f, 150); setTimeout(f, 600);
+    </script>""",
+    height=0,
+)
 
 # --------------------------------------------------
 # 3) CONTEO + PATRONES
