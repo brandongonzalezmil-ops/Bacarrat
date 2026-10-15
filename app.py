@@ -15,10 +15,17 @@ st.set_page_config(page_title="Baccarat Pro", page_icon="🃏", layout="wide")
 
 DB = "baccarat.db"
 MAZOS = 8
-RANGOS = ["A", "2", "3", "4", "5", "6", "7",
-          "8", "9", "10", "J", "Q", "K"]
-VALORES = {"A": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
-           "8": 8, "9": 9, "10": 0, "J": 0, "Q": 0, "K": 0}
+# "0" agrupa 10, J, Q y K (todas valen 0): 16 cartas por mazo.
+RANGOS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+VALORES = {r: int(r) for r in RANGOS}
+# Nombres antiguos (historial guardado) -> grupo actual
+NORMALIZAR = {"A": "1", "T": "0", "10": "0", "J": "0", "Q": "0", "K": "0"}
+
+
+def inicial(r):
+    """Cartas de ese grupo en el zapato completo."""
+    return MAZOS * (16 if r == "0" else 4)
+
 EMOJI = {"P": "🔵", "B": "🔴", "T": "🟢"}
 NOMBRE = {"P": "Jugador", "B": "Banca", "T": "Empate"}
 
@@ -245,10 +252,12 @@ def conteo_por_rango(df, extra):
     for _, f in df.iterrows():
         for col in ("cartas_jugador", "cartas_banca"):
             for carta in f[col].split(","):
-                carta = carta.strip()
+                carta = carta.strip().upper()
+                carta = NORMALIZAR.get(carta, carta)
                 if carta in conteo:
                     conteo[carta] += 1
     for carta in extra:
+        carta = NORMALIZAR.get(carta.strip().upper(), carta.strip().upper())
         if carta in conteo:
             conteo[carta] += 1
     return conteo
@@ -258,7 +267,7 @@ def restantes_por_valor(conteo):
     """Cartas restantes agrupadas por valor baccarat (0..9)."""
     rest = [0] * 10
     for r in RANGOS:
-        rest[VALORES[r]] += MAZOS * 4 - conteo[r]
+        rest[VALORES[r]] += inicial(r) - conteo[r]
     return rest
 
 
@@ -326,7 +335,7 @@ with st.sidebar:
 
     st.markdown("---")
     with st.expander("Carta vista fuera de mano (quemada)"):
-        carta_x = st.selectbox("Carta", RANGOS, key="carta_x")
+        carta_x = st.selectbox("Carta (0 = 10/J/Q/K)", RANGOS, key="carta_x")
         if st.button("Agregar al conteo"):
             with conectar() as con:
                 con.execute(
@@ -347,8 +356,8 @@ total_vistas = sum(conteo.values())
 
 st.title("🃏 Baccarat Pro")
 
-if min(rest_valor) < 0 or any(conteo[r] > MAZOS * 4 for r in RANGOS):
-    st.error("Hay un rango con más cartas registradas de las que existen "
+if min(rest_valor) < 0 or any(conteo[r] > inicial(r) for r in RANGOS):
+    st.error("Hay un grupo con más cartas registradas de las que existen "
              "en 8 mazos. Revisa errores (usa ↩️ Deshacer última mano).")
 elif total_rest < 20:
     st.warning("Quedan menos de 20 cartas: el zapato está por terminar. "
@@ -394,12 +403,12 @@ else:
 # 2) REGISTRO RAPIDO POR TECLADO
 # --------------------------------------------------
 
-ALIAS = {"T": "10", "0": "10", "1": "A"}
+ALIAS = {"A": "1", "T": "0", "J": "0", "Q": "0", "K": "0"}
 
 
 def parsear_cartas(texto, lado, minimo, maximo):
     """'72' -> ['7','2']. Una letra/numero por carta.
-    10 = T o 0 (o escribir 10). Acepta espacios o comas."""
+    Cualquier 10, J, Q o K se escribe 0. A = 1."""
     t = texto.upper().replace("10", "T")
     t = re.sub(r"[\s/,\-\.]+", "", t)
     cartas = []
@@ -416,32 +425,35 @@ def parsear_cartas(texto, lado, minimo, maximo):
 
 st.markdown("---")
 st.subheader("⚡ Registro rápido (teclado)")
-st.caption("**Tab** pasa de casilla: Jugador → Banca → 3ª Jugador → 3ª Banca "
-           "→ **Enter**. Las terceras cartas se dejan vacías si no hubo. "
-           "Ej.: `72` · `45` · `K` · (vacío) · 10 = `T` o `0` · escribe `u` "
-           "en Jugador para deshacer la última mano")
+st.caption("Una carta por casilla, en orden de reparto. **Tab** para pasar a "
+           "la siguiente y **Enter** para guardar. Las dos últimas se dejan "
+           "vacías si no hubo tercera carta. **10, J, Q y K = `0`** · "
+           "A = `1` · escribe `u` en la 1ª casilla para deshacer la última mano")
 
 with st.form("rapido", clear_on_submit=True):
-    f1, f2, f3, f4 = st.columns(4)
-    entrada_j = f1.text_input("🔵 Jugador (2 cartas)", placeholder="72")
-    entrada_b = f2.text_input("🔴 Banca (2 cartas)", placeholder="45")
-    entrada_j3 = f3.text_input("🔵 3ª Jugador", placeholder="opcional")
-    entrada_b3 = f4.text_input("🔴 3ª Banca", placeholder="opcional")
+    cols = st.columns(6)
+    etiquetas = ["🔵 J1", "🔴 B1", "🔵 J2", "🔴 B2", "🔵 J3", "🔴 B3"]
+    entradas = [cols[i].text_input(etiquetas[i]) for i in range(6)]
     enviar = st.form_submit_button("Guardar (Enter)")
 
 if enviar:
-    if entrada_j.strip().lower() in ("u", "z"):
+    j1, b1, j2, b2, j3, b3 = [e.strip() for e in entradas]
+    if j1.lower() in ("u", "z"):
         deshacer_ultima()
         st.session_state.aviso = "↩️ Última mano deshecha."
         st.rerun()
-    elif entrada_j.strip() or entrada_b.strip():
+    elif any([j1, b1, j2, b2, j3, b3]):
         try:
-            j = parsear_cartas(entrada_j, "Jugador", 2, 2)
-            b = parsear_cartas(entrada_b, "Banca", 2, 2)
-            if entrada_j3.strip():
-                j += parsear_cartas(entrada_j3, "3ª Jugador", 1, 1)
-            if entrada_b3.strip():
-                b += parsear_cartas(entrada_b3, "3ª Banca", 1, 1)
+            j, b = [], []
+            for txt, nombre, lado, obligatoria in [
+                (j1, "J1", j, True), (b1, "B1", b, True),
+                (j2, "J2", j, True), (b2, "B2", b, True),
+                (j3, "J3", j, False), (b3, "B3", b, False),
+            ]:
+                if txt:
+                    lado += parsear_cartas(txt, nombre, 1, 1)
+                elif obligatoria:
+                    raise ValueError(f"Falta la carta {nombre}.")
             error = validar_mano(j, b)
             if error:
                 raise ValueError(error)
@@ -485,18 +497,14 @@ with col_a:
     tabla = pd.DataFrame([{
         "Carta": r,
         "Vistas": conteo[r],
-        "Restantes": MAZOS * 4 - conteo[r],
+        "Iniciales": inicial(r),
+        "Restantes": inicial(r) - conteo[r],
     } for r in RANGOS])
     st.dataframe(tabla.set_index("Carta").T, use_container_width=True)
 
-    por_valor = pd.DataFrame({
-        "Valor": [str(i) for i in range(10)],
-        "Restantes": rest_valor,
-    })
-    st.bar_chart(por_valor.set_index("Valor"))
-    st.caption("Valor 0 = 10, J, Q, K. Más 0s y 4-6 sobrantes tiende a "
-               "favorecer a Banca/Jugador de forma muy leve; el modelo "
-               "ya lo calcula exacto, no hace falta interpretarlo a ojo.")
+    st.bar_chart(tabla.set_index("Carta")[["Restantes"]])
+    st.caption("El grupo 0 junta 10, J, Q y K (128 cartas en 8 mazos). "
+               "El modelo de arriba usa estos conteos exactos.")
 
 with col_b:
     st.subheader("📊 Patrones (solo descriptivo)")
