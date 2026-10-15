@@ -397,8 +397,8 @@ else:
 ALIAS = {"T": "10", "0": "10", "1": "A"}
 
 
-def parsear_cartas(texto, lado):
-    """'453' -> ['4','5','3']. Una letra/numero por carta.
+def parsear_cartas(texto, lado, minimo, maximo):
+    """'72' -> ['7','2']. Una letra/numero por carta.
     10 = T o 0 (o escribir 10). Acepta espacios o comas."""
     t = texto.upper().replace("10", "T")
     t = re.sub(r"[\s/,\-\.]+", "", t)
@@ -408,21 +408,25 @@ def parsear_cartas(texto, lado):
         if ch not in RANGOS:
             raise ValueError(f"{lado}: carta inválida '{ch}'")
         cartas.append(ch)
-    if len(cartas) not in (2, 3):
-        raise ValueError(f"{lado}: debe tener 2 o 3 cartas.")
+    if not minimo <= len(cartas) <= maximo:
+        esperado = str(minimo) if minimo == maximo else f"{minimo} o {maximo}"
+        raise ValueError(f"{lado}: debe tener {esperado} carta(s).")
     return cartas
 
 
 st.markdown("---")
 st.subheader("⚡ Registro rápido (teclado)")
-st.caption("Jugador → **Tab** → Banca → **Enter**. Ej.: `72` y `453` · "
-           "10 = `T` o `0` · J, Q, K, A normal · escribe `u` en "
-           "Jugador para deshacer la última mano")
+st.caption("**Tab** pasa de casilla: Jugador → Banca → 3ª Jugador → 3ª Banca "
+           "→ **Enter**. Las terceras cartas se dejan vacías si no hubo. "
+           "Ej.: `72` · `45` · `K` · (vacío) · 10 = `T` o `0` · escribe `u` "
+           "en Jugador para deshacer la última mano")
 
 with st.form("rapido", clear_on_submit=True):
-    fc1, fc2 = st.columns(2)
-    entrada_j = fc1.text_input("🔵 Jugador", placeholder="72")
-    entrada_b = fc2.text_input("🔴 Banca", placeholder="453")
+    f1, f2, f3, f4 = st.columns(4)
+    entrada_j = f1.text_input("🔵 Jugador (2 cartas)", placeholder="72")
+    entrada_b = f2.text_input("🔴 Banca (2 cartas)", placeholder="45")
+    entrada_j3 = f3.text_input("🔵 3ª Jugador", placeholder="opcional")
+    entrada_b3 = f4.text_input("🔴 3ª Banca", placeholder="opcional")
     enviar = st.form_submit_button("Guardar (Enter)")
 
 if enviar:
@@ -432,8 +436,12 @@ if enviar:
         st.rerun()
     elif entrada_j.strip() or entrada_b.strip():
         try:
-            j = parsear_cartas(entrada_j, "Jugador")
-            b = parsear_cartas(entrada_b, "Banca")
+            j = parsear_cartas(entrada_j, "Jugador", 2, 2)
+            b = parsear_cartas(entrada_b, "Banca", 2, 2)
+            if entrada_j3.strip():
+                j += parsear_cartas(entrada_j3, "3ª Jugador", 1, 1)
+            if entrada_b3.strip():
+                b += parsear_cartas(entrada_b3, "3ª Banca", 1, 1)
             error = validar_mano(j, b)
             if error:
                 raise ValueError(error)
