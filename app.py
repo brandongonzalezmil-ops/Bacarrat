@@ -370,19 +370,18 @@ else:
     ev_mejor = max(ev_b, ev_p) * 100
 
     titulo = f"👉 APUÉSTELE A {mejor.upper()}"
+    # Rojo = Banca, Azul = Jugador
+    color = "#b91c1c" if mejor == "Banca" else "#1d4ed8"
     if ev_mejor >= umbral:
         kelly = max(ev_mejor / 100, 0)
         apuesta = bankroll * min(kelly * 0.5, 0.02)
-        color = "#166534"
-        detalle = (f"Ventaja a favor: +{ev_mejor:.2f}% · "
+        detalle = (f"✅ Ventaja a favor: +{ev_mejor:.2f}% · "
                    f"Apuesta máx. sugerida: ${apuesta:,.0f}")
     elif ev_mejor > 0:
-        color = "#854d0e"
-        detalle = (f"Ventaja pequeña: +{ev_mejor:.2f}% · "
+        detalle = (f"⚠️ Ventaja pequeña: +{ev_mejor:.2f}% · "
                    f"apuesta baja (por debajo de su margen de seguridad)")
     else:
-        color = "#1e3a8a"
-        detalle = (f"Es la mejor de las dos, pero la casa sigue con "
+        detalle = (f"⛔ Mejor de las dos, pero la casa sigue con "
                    f"ventaja ({ev_mejor:+.2f}%) · apuesta mínima")
 
     st.markdown(
